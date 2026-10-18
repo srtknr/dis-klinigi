@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
-import FullCalendar, { type EventInput, type EventSourceFuncInfo } from "@fullcalendar/react";
+import { useEffect, useRef, useState } from "react";
+import FullCalendar, { type EventInput } from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/react/daygrid";
 import timeGridPlugin from "@fullcalendar/react/timegrid";
 import listPlugin from "@fullcalendar/react/list";
@@ -31,39 +31,57 @@ export function AppointmentCalendar({ dentists }: { dentists: { id: string; name
   const router = useRouter();
   const [dentistId, setDentistId] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
-  const [loading, setLoading] = useState(false);
   const calendarRef = useRef<React.ComponentRef<typeof FullCalendar>>(null);
 
-  const fetchEvents = useCallback(
-    async (info: EventSourceFuncInfo): Promise<EventInput[]> => {
-      const result = await getCalendarEventsAction({
-        from: info.start.toISOString(),
-        to: info.end.toISOString(),
-        dentistId: dentistId || undefined,
-        includeInactive,
-      });
-      if (!result.ok) {
-        toast.error(result.error);
-        return [];
-      }
-      return result.data.map((e) => {
-        const c = STATUS_COLORS[e.status];
-        return {
-          id: e.id,
-          title: dentistId ? e.title : `${e.title} — ${e.dentistName}`,
-          start: e.start,
-          end: e.end,
-          backgroundColor: c.bg,
-          borderColor: c.border,
-          textColor: c.text,
-          extendedProps: { status: e.status },
-        };
-      });
-    },
-    [dentistId, includeInactive],
-  );
+  const [range, setRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [loaded, setLoaded] = useState<{ key: string; events: EventInput[] }>({ key: "", events: [] });
+  const requestKey = range ? `${range.start.getTime()}|${range.end.getTime()}|${dentistId}|${includeInactive}` : "";
+  const loading = requestKey !== "" && loaded.key !== requestKey;
 
-  const eventSources = useMemo(() => [{ events: fetchEvents }], [fetchEvents]);
+  // FullCalendar render sırasında olay kaynağı fonksiyonunu çağırdığı için (server action Router'ı
+  // günceller → "setState in render" hatası) veriyi burada, effect içinde çekiyoruz.
+  useEffect(() => {
+    if (!range) return;
+    let cancelled = false;
+    getCalendarEventsAction({
+      from: range.start.toISOString(),
+      to: range.end.toISOString(),
+      dentistId: dentistId || undefined,
+      includeInactive,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) {
+          toast.error(result.error);
+          setLoaded({ key: requestKey, events: [] });
+          return;
+        }
+        setLoaded({
+          key: requestKey,
+          events: result.data.map((e) => {
+            const c = STATUS_COLORS[e.status];
+            return {
+              id: e.id,
+              title: dentistId ? e.title : `${e.title} — ${e.dentistName}`,
+              start: e.start,
+              end: e.end,
+              backgroundColor: c.bg,
+              borderColor: c.border,
+              textColor: c.text,
+              extendedProps: { status: e.status },
+            };
+          }),
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        toast.error("Takvim yüklenemedi.");
+        setLoaded({ key: requestKey, events: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [range, requestKey, dentistId, includeInactive]);
 
   return (
     <div className="space-y-4">
@@ -113,8 +131,17 @@ export function AppointmentCalendar({ dentists }: { dentists: { id: string; name
           height="auto"
           expandRows
           dayMaxEvents={4}
-          eventSources={eventSources}
-          loading={setLoading}
+          events={loaded.events}
+          datesSet={(info) => {
+            // Render aşamasında tetiklenebilir; state güncellemesini ertele.
+            queueMicrotask(() =>
+              setRange((prev) =>
+                prev && prev.start.getTime() === info.start.getTime() && prev.end.getTime() === info.end.getTime()
+                  ? prev
+                  : { start: info.start, end: info.end },
+              ),
+            );
+          }}
           eventClick={(info) => {
             info.jsEvent.preventDefault();
             router.push(`/admin/randevular/${info.event.id}`);
