@@ -1,0 +1,180 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-heading: var(--font-display);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Yardımcı tonlar */
+  --color-sage: var(--sage);
+  --color-sage-foreground: var(--sage-foreground);
+  --color-sage-soft: var(--sage-soft);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-info-soft: var(--info-soft);
+  --color-info-foreground: var(--info-foreground);
+  --color-cream: var(--cream);
+  --color-sand: var(--sand);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Palet: kırık beyaz / krem zemin, bej ve açık taupe yüzeyler, yumuşak kahverengi vurgu,
+ * koyu kahve-antrasit metin, sınırlı adaçayı yeşili. Kontrast oranları WCAG AA hedeflenerek seçildi.
+ */
+:root {
+  --background: #faf7f2;
+  --foreground: #2f2925;
+  --card: #fffdf9;
+  --card-foreground: #2f2925;
+  --popover: #fffdf9;
+  --popover-foreground: #2f2925;
+  --primary: #7a5c48;
+  --primary-foreground: #fdf9f4;
+  --secondary: #efe6da;
+  --secondary-foreground: #3d342d;
+  --muted: #f2ebe2;
+  --muted-foreground: #6b5f55;
+  --accent: #ebe1d4;
+  --accent-foreground: #3d342d;
+  --destructive: #a5452f;
+  --border: #e3d8ca;
+  --input: #d9ccbc;
+  --ring: #a88b74;
+  --radius: 0.75rem;
+
+  --cream: #f6efe5;
+  --sand: #e8dccd;
+  --sage: #7d8f74;
+  --sage-foreground: #fbfaf6;
+  --sage-soft: #e6ece1;
+  --warning-soft: #f6ead3;
+  --warning-foreground: #7a5617;
+  --danger-soft: #f5e1da;
+  --danger-foreground: #8a3522;
+  --info-soft: #e5e7ea;
+  --info-foreground: #3d4651;
+
+  --chart-1: #7a5c48;
+  --chart-2: #a88b74;
+  --chart-3: #7d8f74;
+  --chart-4: #c9b49d;
+  --chart-5: #4a3f37;
+
+  --sidebar: #f5efe6;
+  --sidebar-foreground: #2f2925;
+  --sidebar-primary: #7a5c48;
+  --sidebar-primary-foreground: #fdf9f4;
+  --sidebar-accent: #ebe1d4;
+  --sidebar-accent-foreground: #2f2925;
+  --sidebar-border: #e3d8ca;
+  --sidebar-ring: #a88b74;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .font-display {
+    font-family: var(--font-display), Georgia, serif;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* FullCalendar classic temasını klinik paletine uyarlama */
+.dk-calendar {
+  --fc-classic-button: #efe6da;
+  --fc-classic-button-border: #e3d8ca;
+  --fc-classic-button-strong: #7a5c48;
+  --fc-classic-button-strong-border: #7a5c48;
+  --fc-classic-button-outline: #a88b7480;
+  --fc-classic-button-foreground: #3d342d;
+  --fc-classic-primary: #7a5c48;
+  --fc-classic-primary-foreground: #fdf9f4;
+  --fc-classic-highlight: #e8dccd66;
+  --fc-classic-today: #f6efe5;
+  --fc-classic-now: #a5452f;
+  --fc-classic-background: #fffdf9;
+  --fc-classic-foreground: #2f2925;
+  --fc-classic-muted-foreground: #6b5f55;
+  --fc-classic-faint-foreground: #a89a8c;
+  --fc-classic-border: #e3d8ca;
+  --fc-classic-strong-border: #c9b9a6;
+  font-size: 0.875rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

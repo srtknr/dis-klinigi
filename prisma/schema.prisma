@@ -1,0 +1,568 @@
+// Diş Kliniği Randevu ve Hasta Yönetim Sistemi — veri modeli
+// Tüm klinik verileri `clinicId` ile kapsamlanır (çoklu klinik / tenant hazırlığı).
+// Zaman damgaları UTC (timestamptz) saklanır; arayüzde Europe/Istanbul gösterilir.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────── Enum'lar ─────────────────────────
+
+enum Role {
+  OWNER
+  DENTIST
+  EDITOR
+}
+
+enum Permission {
+  APPOINTMENT_VIEW
+  APPOINTMENT_CREATE
+  APPOINTMENT_EDIT
+  APPOINTMENT_APPROVE
+  PATIENT_VIEW
+  PATIENT_MANAGE
+  TREATMENT_VIEW
+  TREATMENT_MANAGE
+  DENTIST_VIEW
+  DENTIST_MANAGE
+  STAFF_MANAGE
+  SETTINGS_MANAGE
+  AUDIT_VIEW
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum AppointmentSource {
+  PUBLIC_WEBSITE
+  ADMIN_PANEL
+}
+
+enum BlockedTimeType {
+  LEAVE
+  BREAK
+  OTHER
+}
+
+enum TreatmentRecordStatus {
+  ACTIVE
+  VOIDED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum NotificationTemplate {
+  ADMIN_NEW_REQUEST
+  PATIENT_CONFIRMED
+  PATIENT_REJECTED
+  PATIENT_CANCELLED
+  PATIENT_RESCHEDULED
+}
+
+enum CalendarConnectionStatus {
+  ACTIVE
+  ERROR
+  REVOKED
+}
+
+enum CalendarSyncStatus {
+  PENDING
+  PROCESSING
+  SYNCED
+  FAILED
+}
+
+enum CalendarDesiredState {
+  PRESENT
+  ABSENT
+}
+
+// ───────────────────────── Klinik & Kullanıcılar ─────────────────────────
+
+model Clinic {
+  id                String   @id @default(cuid())
+  slug              String   @unique
+  name              String
+  tagline           String?
+  about             String?
+  phone             String?
+  email             String?
+  notificationEmail String?
+  address           String?
+  city              String?
+  mapEmbedUrl       String?
+  workingHoursText  String?
+  timezone          String   @default("Europe/Istanbul")
+  /// Demo verisi olduğunu public sitede belirtmek için
+  isDemo            Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  memberships         Membership[]
+  dentists            DentistProfile[]
+  services            Service[]
+  patients            Patient[]
+  appointments        Appointment[]
+  treatmentRecords    TreatmentRecord[]
+  calendarConnections GoogleCalendarConnection[]
+  notifications       NotificationLog[]
+  auditLogs           AuditLog[]
+  blockedTimes        BlockedTime[]
+  patientNotes        PatientNote[]
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  name             String
+  phone            String?
+  passwordHash     String
+  isActive         Boolean   @default(true)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  memberships    Membership[]
+  sessions       Session[]
+  dentistProfile DentistProfile?
+
+  statusChanges      AppointmentStatusHistory[]
+  appointmentNotes   AppointmentNote[]
+  patientNotes       PatientNote[]
+  treatmentsCreated  TreatmentRecord[]          @relation("TreatmentCreatedBy")
+  treatmentsUpdated  TreatmentRecord[]          @relation("TreatmentUpdatedBy")
+  treatmentsVoided   TreatmentRecord[]          @relation("TreatmentVoidedBy")
+  treatmentRevisions TreatmentRecordRevision[]
+  auditLogs          AuditLog[]
+}
+
+model Session {
+  id             String   @id @default(cuid())
+  /// Çerezdeki token'ın SHA-256 özeti; ham token veritabanında tutulmaz
+  tokenHash      String   @unique
+  userId         String
+  activeClinicId String?
+  userAgent      String?
+  expiresAt      DateTime
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Kullanıcının bir klinikteki rolü ve izinleri.
+/// OWNER tüm izinlere sahiptir; DENTIST ve EDITOR için izinler ayrı ayrı yönetilir.
+model Membership {
+  id          String       @id @default(cuid())
+  userId      String
+  clinicId    String
+  role        Role
+  permissions Permission[]
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clinicId])
+  @@index([clinicId, role])
+}
+
+// ───────────────────────── Hekimler & Çalışma Programı ─────────────────────────
+
+model DentistProfile {
+  id                    String   @id @default(cuid())
+  clinicId              String
+  userId                String?  @unique
+  slug                  String
+  title                 String   @default("Dt.")
+  firstName             String
+  lastName              String
+  specialty             String
+  bio                   String?
+  photoUrl              String?
+  slotMinutes           Int      @default(30)
+  isActive              Boolean  @default(true)
+  acceptsOnlineBooking  Boolean  @default(true)
+  sortOrder             Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  clinic              Clinic                     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user                User?                      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workingHours        WorkingHour[]
+  blockedTimes        BlockedTime[]
+  appointments        Appointment[]
+  treatmentRecords    TreatmentRecord[]
+  calendarConnections GoogleCalendarConnection[]
+
+  @@unique([clinicId, slug])
+  @@index([clinicId, isActive])
+}
+
+/// Haftalık çalışma programı. weekday: 1=Pazartesi … 7=Pazar (ISO).
+/// Dakikalar gün başından itibaren yerel saattir (ör. 540 = 09:00).
+model WorkingHour {
+  id               String @id @default(cuid())
+  dentistId        String
+  weekday          Int
+  startMinute      Int
+  endMinute        Int
+  breakStartMinute Int?
+  breakEndMinute   Int?
+
+  dentist DentistProfile @relation(fields: [dentistId], references: [id], onDelete: Cascade)
+
+  @@unique([dentistId, weekday])
+}
+
+/// İzin günleri, ek molalar veya randevuya kapalı zaman aralıkları.
+model BlockedTime {
+  id          String          @id @default(cuid())
+  clinicId    String
+  dentistId   String
+  type        BlockedTimeType @default(LEAVE)
+  startsAt    DateTime
+  endsAt      DateTime
+  reason      String?
+  createdById String?
+  createdAt   DateTime        @default(now())
+
+  clinic  Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  dentist DentistProfile @relation(fields: [dentistId], references: [id], onDelete: Cascade)
+
+  @@index([dentistId, startsAt, endsAt])
+}
+
+model Service {
+  id              String   @id @default(cuid())
+  clinicId        String
+  slug            String
+  name            String
+  description     String?
+  durationMinutes Int?
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@unique([clinicId, slug])
+}
+
+// ───────────────────────── Hastalar ─────────────────────────
+
+model Patient {
+  id          String    @id @default(cuid())
+  clinicId    String
+  firstName   String
+  lastName    String
+  /// Aramalar için küçük harfe çevrilmiş, Türkçe karakterleri sadeleştirilmiş ad soyad
+  searchName  String
+  /// E.164 formatında (ör. +905551112233)
+  phone       String
+  email       String?
+  birthDate   DateTime? @db.Date
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+
+  clinic           Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointments     Appointment[]
+  treatmentRecords TreatmentRecord[]
+  notes            PatientNote[]
+
+  @@index([clinicId, phone])
+  @@index([clinicId, searchName])
+  @@index([clinicId, createdAt])
+}
+
+/// Hastaya ilişkin idari notlar (klinik muayene notlarından ayrıdır).
+model PatientNote {
+  id        String   @id @default(cuid())
+  clinicId  String
+  patientId String
+  authorId  String?
+  body      String
+  createdAt DateTime @default(now())
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, createdAt])
+}
+
+// ───────────────────────── Randevular ─────────────────────────
+
+/// Aynı hekim için PENDING/CONFIRMED durumundaki randevuların zaman aralıkları
+/// veritabanında bir EXCLUDE kısıtıyla da çakışmaya karşı korunur (bkz. migration).
+model Appointment {
+  id                 String            @id @default(cuid())
+  clinicId           String
+  dentistId          String
+  patientId          String?
+  serviceId          String?
+  startsAt           DateTime
+  endsAt             DateTime
+  status             AppointmentStatus @default(PENDING)
+  source             AppointmentSource
+  /// Talep anındaki iletişim bilgileri (hasta eşleştirmesi yapılana kadar referans)
+  requesterFirstName String
+  requesterLastName  String
+  requesterPhone     String
+  requesterEmail     String?
+  reason             String?
+  patientMessage     String?
+  /// KVKK aydınlatma metninin okunduğu beyanının zamanı ve metin sürümü
+  privacyNoticeAckAt DateTime?
+  privacyNoticeVer   String?
+  /// Açıklama alanında sağlık bilgisi paylaşıldıysa alınan açık rızanın zamanı
+  explicitConsentAt  DateTime?
+  statusReason       String?
+  createdById        String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  clinic         Clinic                     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  dentist        DentistProfile             @relation(fields: [dentistId], references: [id], onDelete: Restrict)
+  patient        Patient?                   @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  service        Service?                   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  statusHistory  AppointmentStatusHistory[]
+  notes          AppointmentNote[]
+  treatments     TreatmentRecord[]
+  calendarEvents CalendarEventMapping[]
+  notifications  NotificationLog[]
+
+  @@index([clinicId, startsAt])
+  @@index([clinicId, status, startsAt])
+  @@index([dentistId, startsAt])
+  @@index([clinicId, requesterPhone])
+  @@index([patientId, startsAt])
+}
+
+model AppointmentStatusHistory {
+  id            String             @id @default(cuid())
+  appointmentId String
+  fromStatus    AppointmentStatus?
+  toStatus      AppointmentStatus
+  /// Yeniden planlama gibi durum değiştirmeyen olaylar için
+  event         String
+  note          String?
+  changedById   String?
+  createdAt     DateTime           @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  changedBy   User?       @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([appointmentId, createdAt])
+}
+
+/// Randevuya ilişkin dahili (idari) notlar. Hastaya veya bildirimlere yansımaz.
+model AppointmentNote {
+  id            String   @id @default(cuid())
+  appointmentId String
+  authorId      String?
+  body          String
+  createdAt     DateTime @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  author      User?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([appointmentId, createdAt])
+}
+
+// ───────────────────────── Muayene / Tedavi Geçmişi ─────────────────────────
+
+/// Randevudan bağımsız yaşam döngüsüne sahip klinik kayıt.
+/// Silinmez; hatalı kayıtlar gerekçeyle "geçersiz" (VOIDED) işaretlenir.
+model TreatmentRecord {
+  id              String                @id @default(cuid())
+  clinicId        String
+  patientId       String
+  dentistId       String
+  appointmentId   String?
+  visitDate       DateTime              @db.Date
+  procedure       String
+  examinationNote String?
+  nextVisitPlan   String?
+  nextVisitTodo   String?
+  status          TreatmentRecordStatus @default(ACTIVE)
+  voidReason      String?
+  voidedAt        DateTime?
+  voidedById      String?
+  createdById     String
+  updatedById     String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  clinic      Clinic                    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient     Patient                   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  dentist     DentistProfile            @relation(fields: [dentistId], references: [id], onDelete: Restrict)
+  appointment Appointment?              @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  createdBy   User                      @relation("TreatmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy   User?                     @relation("TreatmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  voidedBy    User?                     @relation("TreatmentVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  revisions   TreatmentRecordRevision[]
+
+  @@index([clinicId, patientId, visitDate])
+  @@index([appointmentId])
+}
+
+/// Her düzenlemede kaydın önceki hali ve düzenleme gerekçesi saklanır.
+model TreatmentRecordRevision {
+  id           String   @id @default(cuid())
+  recordId     String
+  version      Int
+  snapshot     Json
+  changeReason String
+  editedById   String
+  createdAt    DateTime @default(now())
+
+  record   TreatmentRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  editedBy User            @relation(fields: [editedById], references: [id], onDelete: Restrict)
+
+  @@unique([recordId, version])
+}
+
+// ───────────────────────── Google Calendar ─────────────────────────
+
+/// dentistId boş ise klinik geneli takvim bağlantısıdır.
+/// Token'lar AES-256-GCM ile şifrelenmiş halde saklanır.
+model GoogleCalendarConnection {
+  id                 String                   @id @default(cuid())
+  clinicId           String
+  dentistId          String?
+  googleEmail        String?
+  calendarId         String                   @default("primary")
+  accessTokenEnc     String
+  refreshTokenEnc    String?
+  tokenExpiresAt     DateTime?
+  scope              String
+  status             CalendarConnectionStatus @default(ACTIVE)
+  lastError          String?
+  lastSyncedAt       DateTime?
+  connectedById      String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  clinic   Clinic                 @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  dentist  DentistProfile?        @relation(fields: [dentistId], references: [id], onDelete: Cascade)
+  mappings CalendarEventMapping[]
+
+  @@index([clinicId, dentistId])
+}
+
+/// Randevu ↔ Google etkinliği eşleşmesi ve senkronizasyon kuyruğu.
+/// googleEventId randevu+bağlantıdan deterministik üretilir; mükerrer etkinlik oluşmaz.
+model CalendarEventMapping {
+  id            String               @id @default(cuid())
+  appointmentId String
+  connectionId  String
+  googleEventId String
+  desiredState  CalendarDesiredState @default(PRESENT)
+  syncStatus    CalendarSyncStatus   @default(PENDING)
+  attempts      Int                  @default(0)
+  nextAttemptAt DateTime?            @default(now())
+  lastError     String?
+  lastSyncedAt  DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  appointment Appointment              @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  connection  GoogleCalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, connectionId])
+  @@index([syncStatus, nextAttemptAt])
+}
+
+// ───────────────────────── Bildirimler & Denetim ─────────────────────────
+
+/// Bildirim outbox'ı: randevu değişikliğiyle aynı transaction içinde oluşturulur,
+/// ardından gönderilir. idempotencyKey mükerrer gönderimi engeller.
+model NotificationLog {
+  id                String               @id @default(cuid())
+  clinicId          String
+  appointmentId     String?
+  channel           NotificationChannel
+  template          NotificationTemplate
+  recipient         String
+  subject           String?
+  body              String
+  idempotencyKey    String               @unique
+  status            NotificationStatus   @default(PENDING)
+  provider          String?
+  providerMessageId String?
+  attempts          Int                  @default(0)
+  nextAttemptAt     DateTime?            @default(now())
+  lastError         String?
+  sentAt            DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  clinic      Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+  @@index([clinicId, createdAt])
+  @@index([appointmentId])
+}
+
+/// Kritik değişikliklerin denetim kaydı. metadata içine hassas klinik içerik yazılmaz.
+model AuditLog {
+  id          String   @id @default(cuid())
+  clinicId    String?
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ipHash      String?
+  createdAt   DateTime @default(now())
+
+  clinic Clinic? @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  actor  User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, createdAt])
+  @@index([entityType, entityId])
+}
+
+/// Sabit pencereli, veritabanı tabanlı hız sınırlama (çoklu sunucuda da çalışır).
+model RateLimitBucket {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+}
