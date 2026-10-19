@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import FullCalendar, { type EventInput } from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/react/daygrid";
 import timeGridPlugin from "@fullcalendar/react/timegrid";
@@ -11,11 +11,18 @@ import trLocale from "@fullcalendar/react/locales/tr";
 import "@fullcalendar/react/skeleton.css";
 import "@fullcalendar/react/themes/classic/theme.css";
 import "@fullcalendar/react/themes/classic/palette.css";
+import { CalendarClock, ExternalLink, Phone, Stethoscope, StickyNote, UserRound, X } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { AppointmentStatusBadge } from "@/components/shared/status-badge";
+import { formatPhone } from "@/lib/phone";
+import { dateKeyInTz, formatLongDate, formatTime } from "@/lib/time";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import { getCalendarEventsAction } from "@/features/appointments/actions";
+import type { CalendarView } from "@/features/appointments/calendar-views";
 import { APPOINTMENT_STATUS_LABELS, type AppointmentStatusKey } from "@/features/appointments/status";
 
 const STATUS_COLORS: Record<AppointmentStatusKey, { bg: string; border: string; text: string }> = {
@@ -27,12 +34,33 @@ const STATUS_COLORS: Record<AppointmentStatusKey, { bg: string; border: string; 
   REJECTED: { bg: "#f2ebe2", border: "#cbbcab", text: "#6b5f55" },
 };
 
-export function AppointmentCalendar({ dentists }: { dentists: { id: string; name: string }[] }) {
-  const router = useRouter();
+type SelectedEvent = {
+  id: string;
+  el: HTMLElement;
+  status: AppointmentStatusKey;
+  start: Date;
+  end: Date;
+  personName: string;
+  serviceName: string | null;
+  dentistName: string;
+  phone: string;
+  reason: string | null;
+};
+
+export function AppointmentCalendar({
+  dentists,
+  initialDate,
+  initialView = "timeGridWeek",
+}: {
+  dentists: { id: string; name: string }[];
+  initialDate?: string;
+  initialView?: CalendarView;
+}) {
   const [dentistId, setDentistId] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const calendarRef = useRef<React.ComponentRef<typeof FullCalendar>>(null);
 
+  const [selected, setSelected] = useState<SelectedEvent | null>(null);
   const [range, setRange] = useState<{ start: Date; end: Date } | null>(null);
   const [loaded, setLoaded] = useState<{ key: string; events: EventInput[] }>({ key: "", events: [] });
   const requestKey = range ? `${range.start.getTime()}|${range.end.getTime()}|${dentistId}|${includeInactive}` : "";
@@ -65,10 +93,17 @@ export function AppointmentCalendar({ dentists }: { dentists: { id: string; name
               title: dentistId ? e.title : `${e.title} — ${e.dentistName}`,
               start: e.start,
               end: e.end,
-              backgroundColor: c.bg,
-              borderColor: c.border,
-              textColor: c.text,
-              extendedProps: { status: e.status },
+              // FullCalendar v7: backgroundColor/borderColor/textColor yerine color + contrastColor
+              color: c.bg,
+              contrastColor: c.text,
+              extendedProps: {
+                status: e.status,
+                personName: e.personName,
+                serviceName: e.serviceName,
+                dentistName: e.dentistName,
+                phone: e.phone,
+                reason: e.reason,
+              },
             };
           }),
         });
@@ -119,7 +154,8 @@ export function AppointmentCalendar({ dentists }: { dentists: { id: string; name
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, classicThemePlugin]}
           locale={trLocale}
           timeZone="Europe/Istanbul"
-          initialView="timeGridWeek"
+          initialView={initialView}
+          initialDate={initialDate}
           headerToolbar={{ start: "prev,next today", center: "title", end: "timeGridDay,timeGridWeek,dayGridMonth,listWeek" }}
           firstDay={1}
           nowIndicator
@@ -133,6 +169,17 @@ export function AppointmentCalendar({ dentists }: { dentists: { id: string; name
           dayMaxEvents={4}
           events={loaded.events}
           datesSet={(info) => {
+            // Detay sayfasından dönüşte (geri tuşu / "Randevular" bağlantısı) aynı görünüm açılsın diye
+            // tarih ve görünümü URL'e yaz. Render sırasında çağrılabileceği için ertelenir.
+            const date = dateKeyInTz(info.view.currentStart);
+            const view = info.view.type;
+            queueMicrotask(() => {
+              const url = new URL(window.location.href);
+              if (url.searchParams.get("tarih") === date && url.searchParams.get("gorunum") === view) return;
+              url.searchParams.set("tarih", date);
+              url.searchParams.set("gorunum", view);
+              window.history.replaceState(window.history.state, "", url);
+            });
             // Render aşamasında tetiklenebilir; state güncellemesini ertele.
             queueMicrotask(() =>
               setRange((prev) =>
@@ -144,12 +191,78 @@ export function AppointmentCalendar({ dentists }: { dentists: { id: string; name
           }}
           eventClick={(info) => {
             info.jsEvent.preventDefault();
-            router.push(`/admin/randevular/${info.event.id}`);
+            const p = info.event.extendedProps;
+            setSelected({
+              id: info.event.id,
+              el: info.el,
+              status: p.status,
+              start: info.event.start!,
+              end: info.event.end ?? info.event.start!,
+              personName: p.personName,
+              serviceName: p.serviceName,
+              dentistName: p.dentistName,
+              phone: p.phone,
+              reason: p.reason,
+            });
           }}
           eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
           slotHeaderFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         />
       </div>
+
+      <Popover open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
+        {selected ? <PopoverAnchor virtualRef={{ current: selected.el }} /> : null}
+        <PopoverContent align="start" side="right" collisionPadding={16} className="w-80 gap-3 p-4">
+          {selected ? (
+            <>
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-1.5">
+                  <h3 className="text-base leading-tight font-semibold">{selected.personName}</h3>
+                  <AppointmentStatusBadge status={selected.status} />
+                </div>
+                <Button type="button" variant="ghost" size="icon-sm" onClick={() => setSelected(null)} aria-label="Kapat">
+                  <X aria-hidden />
+                </Button>
+              </div>
+              <dl className="space-y-2 text-sm">
+                <PopupRow icon={CalendarClock}>
+                  {formatLongDate(selected.start)}
+                  <br />
+                  {formatTime(selected.start)} – {formatTime(selected.end)}
+                </PopupRow>
+                <PopupRow icon={Stethoscope}>
+                  {selected.dentistName}
+                  {selected.serviceName ? ` · ${selected.serviceName}` : ""}
+                </PopupRow>
+                <PopupRow icon={Phone}>
+                  <a href={`tel:${selected.phone}`} className="hover:underline">
+                    {formatPhone(selected.phone)}
+                  </a>
+                </PopupRow>
+                {selected.reason ? (
+                  <PopupRow icon={StickyNote}>
+                    <span className="line-clamp-3">{selected.reason}</span>
+                  </PopupRow>
+                ) : null}
+              </dl>
+              <Button asChild size="sm" className="w-full">
+                <Link href={`/admin/randevular/${selected.id}?geri=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
+                  <ExternalLink aria-hidden /> Detayı gör
+                </Link>
+              </Button>
+            </>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
+function PopupRow({ icon: Icon, children }: { icon: typeof UserRound; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+      <dd className="min-w-0">{children}</dd>
     </div>
   );
 }

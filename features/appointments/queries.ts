@@ -8,6 +8,7 @@ import { normalizeTrPhone } from "@/lib/phone";
 import { normalizeSearch } from "@/lib/text";
 import { addDaysToKey, dayRangeUtc, isDateKey, todayKey } from "@/lib/time";
 import type { AppointmentFilters } from "@/lib/validations/appointment";
+import { appointmentPersonName } from "@/features/appointments/format";
 import { ALL_STATUSES, type AppointmentStatusKey } from "@/features/appointments/status";
 import { findPatientMatches } from "@/features/patients/matching";
 
@@ -117,6 +118,10 @@ export type CalendarEventDto = {
   status: AppointmentStatusKey;
   dentistId: string;
   dentistName: string;
+  personName: string;
+  serviceName: string | null;
+  phone: string;
+  reason: string | null;
 };
 
 export async function listCalendarEvents(
@@ -147,6 +152,10 @@ export async function listCalendarEvents(
     status: a.status,
     dentistId: a.dentist.id,
     dentistName: `${a.dentist.title} ${a.dentist.firstName} ${a.dentist.lastName}`,
+    personName: appointmentPersonName(a),
+    serviceName: a.service?.name ?? null,
+    phone: a.patient?.phone ?? a.requesterPhone,
+    reason: a.reason,
   }));
 }
 

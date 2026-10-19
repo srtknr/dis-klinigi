@@ -44,9 +44,12 @@ const SYNC: Record<string, { label: string; tone: "warning" | "success" | "dange
   FAILED: { label: "Hata", tone: "danger" },
 };
 
-export default async function AppointmentDetailPage({ params }: PageProps<"/admin/randevular/[id]">) {
+export default async function AppointmentDetailPage({ params, searchParams }: PageProps<"/admin/randevular/[id]">) {
   const ctx = await requirePagePermission("APPOINTMENT_VIEW");
   const { id } = await params;
+  const { geri } = await searchParams;
+  // Yalnızca takvim sayfasına dönüşe izin ver (open redirect olmasın)
+  const fromCalendar = typeof geri === "string" && /^\/admin\/randevular\/takvim(\?[\w=&%.-]*)?$/.test(geri);
   const [{ appointment, candidates }, dentists] = await Promise.all([
     loadOrNotFound(() => getAppointmentDetail(ctx, id)),
     listDentistOptions(ctx),
@@ -59,7 +62,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/admi
     <>
       <PageHeader
         title={name}
-        back={{ href: "/admin/randevular", label: "Randevular" }}
+        back={fromCalendar ? { href: geri as string, label: "Takvim" } : { href: "/admin/randevular", label: "Randevular" }}
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
             <AppointmentStatusBadge status={appointment.status} />
