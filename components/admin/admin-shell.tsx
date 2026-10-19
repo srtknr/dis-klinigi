@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { BrandMark } from "@/components/public/brand";
 import { AdminNav } from "@/components/admin/admin-nav";
+import { NotificationBell } from "@/components/admin/notification-bell";
+import type { StaffNotificationDto } from "@/features/notifications/service";
 import { logoutAction } from "@/features/auth/actions";
 import { ROLE_LABELS, type PermissionKey, type RoleKey } from "@/lib/permissions";
 
@@ -17,10 +19,11 @@ type ShellProps = {
   permissions: PermissionKey[];
   pendingCount: number;
   isDemo: boolean;
+  notifications: { items: StaffNotificationDto[]; unread: number };
   children: React.ReactNode;
 };
 
-export function AdminShell({ clinicName, userName, role, permissions, pendingCount, isDemo, children }: ShellProps) {
+export function AdminShell({ clinicName, userName, role, permissions, pendingCount, isDemo, notifications, children }: ShellProps) {
   const [open, setOpen] = useState(false);
   const nav = (onNavigate?: () => void) => (
     <AdminNav role={role} permissions={permissions} pendingCount={pendingCount} onNavigate={onNavigate} />
@@ -66,11 +69,14 @@ export function AdminShell({ clinicName, userName, role, permissions, pendingCou
               </span>
             ) : null}
           </div>
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/" target="_blank">
-              Web sitesi <ExternalLink aria-hidden />
-            </Link>
-          </Button>
+          <div className="flex items-center gap-1">
+            <NotificationBell items={notifications.items} unread={notifications.unread} />
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/" target="_blank">
+                Web sitesi <ExternalLink aria-hidden />
+              </Link>
+            </Button>
+          </div>
         </header>
         <main id="icerik" className="flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <div className="mx-auto max-w-7xl">{children}</div>

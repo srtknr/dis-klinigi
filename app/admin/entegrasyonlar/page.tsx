@@ -6,7 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DisconnectGoogleButton, ProcessOutboxButton, RetryCalendarButton } from "@/components/admin/retry-button";
 import { PageHeader } from "@/components/shared/page-header";
 import { ToneBadge } from "@/components/shared/status-badge";
+import { WhatsappConfigForm } from "@/components/whatsapp/whatsapp-config-form";
 import { getIntegrationsOverview } from "@/features/integrations/service";
+import { getWhatsappOverview } from "@/features/whatsapp/service";
+import { REMINDER_BUTTONS, REMINDER_TEMPLATE_EXAMPLE, REMINDER_TEMPLATE_PARAMS } from "@/lib/notifications/whatsapp/types";
 import { requirePagePermission } from "@/lib/auth/current";
 import { dentistName } from "@/lib/text";
 import { formatDateTime } from "@/lib/time";
@@ -15,7 +18,7 @@ export const metadata: Metadata = { title: "Entegrasyonlar" };
 
 export default async function IntegrationsPage({ searchParams }: PageProps<"/admin/entegrasyonlar">) {
   const ctx = await requirePagePermission("SETTINGS_MANAGE");
-  const data = await getIntegrationsOverview(ctx);
+  const [data, whatsapp] = await Promise.all([getIntegrationsOverview(ctx), getWhatsappOverview(ctx)]);
   const sp = await searchParams;
   const googleHint = typeof sp.google === "string" ? sp.google : null;
 
@@ -23,7 +26,7 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/adm
     <>
       <PageHeader
         title="Entegrasyonlar"
-        description="Google Takvim, e-posta ve SMS durumunu buradan izleyin. Çalışmayan bir kanalı çalışıyormuş gibi göstermeyiz."
+        description="Google Takvim, e-posta, SMS ve WhatsApp durumunu buradan izleyin. Çalışmayan bir kanalı çalışıyormuş gibi göstermeyiz."
         actions={<ProcessOutboxButton />}
       />
 
@@ -62,6 +65,56 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/adm
           </CardContent>
         </Card>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>WhatsApp randevu hatırlatması</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          <p className="text-muted-foreground">
+            Onaylı randevulara 24 saat kala hastaya WhatsApp şablon mesajı gider; hasta &quot;Evet / Hayır&quot; butonuna basınca yanıt randevuya işlenir ve
+            hekim ile asistanlara panel bildirimi düşer. Mesaj ücreti kliniğin kendi Meta hesabından kesilir.
+          </p>
+          <p className="flex flex-wrap items-center gap-2">
+            Gönderim:{" "}
+            {whatsapp.setup.live ? <ToneBadge tone="success">Canlı</ToneBadge> : <ToneBadge tone="warning">Mock (gerçek mesaj gitmez)</ToneBadge>}
+            Webhook:{" "}
+            {whatsapp.setup.webhookReady ? <ToneBadge tone="success">Hazır</ToneBadge> : <ToneBadge tone="warning">WHATSAPP_APP_SECRET / VERIFY_TOKEN eksik</ToneBadge>}
+            {whatsapp.config?.isEnabled ? <ToneBadge tone="success">Klinikte açık</ToneBadge> : <ToneBadge tone="muted">Klinikte kapalı</ToneBadge>}
+          </p>
+          {!whatsapp.setup.live ? (
+            <p className="text-xs text-muted-foreground">Gerçek gönderim için sunucuda WHATSAPP_LIVE_SEND=true tanımlayın.</p>
+          ) : null}
+          {whatsapp.setup.testRecipient ? <p className="text-xs">Geliştirmede mesajlar test numarasına yönlendirilir.</p> : null}
+          {whatsapp.config?.lastError ? <p className="text-xs text-danger-foreground">Son hata: {whatsapp.config.lastError}</p> : null}
+          <p className="text-xs text-muted-foreground">
+            Gönderilen: {whatsapp.stats.sent} · Başarısız: {whatsapp.stats.failed} · Gelecek randevularda &quot;geliyorum&quot;: {whatsapp.stats.yes} ·
+            &quot;gelemiyorum&quot;: {whatsapp.stats.no}
+          </p>
+
+          <WhatsappConfigForm
+            initial={{
+              phoneNumberId: whatsapp.config?.phoneNumberId ?? "",
+              wabaId: whatsapp.config?.wabaId ?? "",
+              templateName: whatsapp.config?.templateName ?? "randevu_hatirlatma",
+              templateLanguage: whatsapp.config?.templateLanguage ?? "tr",
+              isEnabled: whatsapp.config?.isEnabled ?? false,
+              hasToken: whatsapp.config !== null,
+            }}
+          />
+
+          <details className="rounded-lg border px-3 py-2">
+            <summary className="cursor-pointer font-medium">Meta&apos;da oluşturulacak şablon</summary>
+            <div className="mt-2 space-y-2 text-muted-foreground">
+              <p>Kategori: <strong>Utility (Hizmet)</strong>. Gövde metni:</p>
+              <p className="rounded bg-muted px-3 py-2 text-foreground">{REMINDER_TEMPLATE_EXAMPLE}</p>
+              <p>Değişkenler sırayla: {REMINDER_TEMPLATE_PARAMS.map((p, i) => `{{${i + 1}}} ${p}`).join(", ")}.</p>
+              <p>İki &quot;Hızlı yanıt&quot; butonu ekleyin, sırasıyla: <strong>{REMINDER_BUTTONS[0]}</strong> ve <strong>{REMINDER_BUTTONS[1]}</strong>.</p>
+              <p>Webhook adresi: <code>{"{APP_URL}"}/api/whatsapp/webhook</code> (alan: <code>messages</code>).</p>
+            </div>
+          </details>
+        </CardContent>
+      </Card>
 
       <Card className="mt-6">
         <CardHeader>

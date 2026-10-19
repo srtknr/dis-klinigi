@@ -122,6 +122,7 @@ export type CalendarEventDto = {
   serviceName: string | null;
   phone: string;
   reason: string | null;
+  attendanceResponse: "YES" | "NO" | null;
 };
 
 export async function listCalendarEvents(
@@ -156,6 +157,7 @@ export async function listCalendarEvents(
     serviceName: a.service?.name ?? null,
     phone: a.patient?.phone ?? a.requesterPhone,
     reason: a.reason,
+    attendanceResponse: a.attendanceResponse,
   }));
 }
 

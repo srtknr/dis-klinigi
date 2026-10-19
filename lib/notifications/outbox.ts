@@ -4,13 +4,17 @@ import type { NotificationChannel, NotificationTemplate } from "@/generated/pris
 import { logger, redact } from "@/lib/logger";
 import { isTrMobile } from "@/lib/phone";
 import { formatDate, formatTime } from "@/lib/time";
+import { decryptSecret } from "@/lib/crypto";
 import {
   adminNotificationFallback,
   getEmailProvider,
   getSmsProvider,
+  getWhatsappProvider,
   resolveEmailRecipient,
   resolveSmsRecipient,
+  resolveWhatsappRecipient,
 } from "@/lib/notifications/config";
+import { buildAttendancePayload, type WhatsappProvider } from "@/lib/notifications/whatsapp/types";
 import { renderAdminRequestEmail, renderPatientEmail, renderSms } from "@/lib/notifications/templates";
 import { ProviderError, type EmailProvider, type SmsProvider } from "@/lib/notifications/types";
 
@@ -20,7 +24,7 @@ export function notificationBackoffMs(attempt: number): number {
   return Math.min(120, 2 ** attempt) * 60_000;
 }
 
-type PatientTemplate = Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST">;
+type PatientTemplate = Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST" | "PATIENT_REMINDER_24H">;
 
 /**
  * Randevu olayına ait bildirimleri outbox'a yazar. Randevu değişikliğiyle aynı transaction
@@ -64,6 +68,9 @@ export async function enqueueAppointmentNotifications(
       });
       rows.push({ channel: "EMAIL", recipient: to, subject: mail.subject, body: mail.text });
     }
+  } else if (input.template === "PATIENT_REMINDER_24H") {
+    // WhatsApp hatırlatmaları enqueueDueReminders() ile planlanır; olay bazlı SMS/e-posta yoktur.
+    return 0;
   } else {
     const template = input.template as PatientTemplate;
     const data = {
@@ -99,7 +106,7 @@ export async function enqueueAppointmentNotifications(
   return result.count;
 }
 
-export type DispatchDeps = { email?: EmailProvider; sms?: SmsProvider; now?: () => Date };
+export type DispatchDeps = { email?: EmailProvider; sms?: SmsProvider; whatsapp?: WhatsappProvider; now?: () => Date };
 export type DispatchOutcome = "sent" | "failed" | "skipped";
 
 /** Tek bir bildirimi gönderir. Atomik "claim" sayesinde aynı kayıt iki kez gönderilmez. */
@@ -112,6 +119,7 @@ export async function dispatchNotification(id: string, deps: DispatchDeps = {}):
   if (claimed.count !== 1) return "skipped";
 
   const log = await db.notificationLog.findUniqueOrThrow({ where: { id } });
+  if (log.channel === "WHATSAPP") return dispatchWhatsappReminder(log, deps, now);
   const emailProvider = deps.email ?? getEmailProvider();
   const smsProvider = deps.sms ?? getSmsProvider();
   const providerName = log.channel === "SMS" ? smsProvider.name : emailProvider.name;
@@ -151,6 +159,75 @@ export async function dispatchNotification(id: string, deps: DispatchDeps = {}):
       },
     });
     logger.warn("notification.send_failed", { notificationId: id, channel: log.channel, retry: canRetry });
+    return "failed";
+  }
+}
+
+type WhatsappLog = Awaited<ReturnType<typeof db.notificationLog.findUniqueOrThrow>>;
+
+async function skipNotification(id: string, reason: string): Promise<DispatchOutcome> {
+  await db.notificationLog.update({ where: { id }, data: { status: "SKIPPED", lastError: reason, nextAttemptAt: null } });
+  return "skipped";
+}
+
+/**
+ * WhatsApp hatırlatmasını gönderir. Gönderim anında randevunun hâlâ onaylı ve gelecekte olduğu,
+ * kliniğin WhatsApp'ı açık tuttuğu ve hastanın daha önce yanıt vermediği yeniden doğrulanır.
+ */
+async function dispatchWhatsappReminder(log: WhatsappLog, deps: DispatchDeps, now: Date): Promise<DispatchOutcome> {
+  const [appt, config] = await Promise.all([
+    log.appointmentId
+      ? db.appointment.findUnique({
+          where: { id: log.appointmentId },
+          include: {
+            clinic: { select: { name: true } },
+            dentist: { select: { title: true, firstName: true, lastName: true } },
+            patient: { select: { firstName: true } },
+          },
+        })
+      : null,
+    db.clinicWhatsappConfig.findUnique({ where: { clinicId: log.clinicId } }),
+  ]);
+  if (!appt || appt.status !== "CONFIRMED" || appt.startsAt <= now) return skipNotification(log.id, "Randevu artık geçerli değil.");
+  if (appt.attendanceResponse) return skipNotification(log.id, "Hasta zaten yanıt verdi.");
+  if (!config?.isEnabled) return skipNotification(log.id, "Klinikte WhatsApp hatırlatması kapalı.");
+
+  try {
+    const provider =
+      deps.whatsapp ?? getWhatsappProvider({ phoneNumberId: config.phoneNumberId, accessToken: decryptSecret(config.accessTokenEnc) });
+    const result = await provider.sendTemplate({
+      to: resolveWhatsappRecipient(log.recipient),
+      templateName: config.templateName,
+      language: config.templateLanguage,
+      bodyParams: [
+        appt.patient?.firstName ?? appt.requesterFirstName,
+        appt.clinic.name,
+        formatDate(appt.startsAt),
+        formatTime(appt.startsAt),
+        `${appt.dentist.title} ${appt.dentist.firstName} ${appt.dentist.lastName}`,
+      ],
+      buttonPayloads: [buildAttendancePayload("YES", appt.id), buildAttendancePayload("NO", appt.id)],
+    });
+    await db.notificationLog.update({
+      where: { id: log.id },
+      data: { status: "SENT", provider: provider.name, providerMessageId: result.providerMessageId, sentAt: now, lastError: null, nextAttemptAt: null },
+    });
+    return "sent";
+  } catch (error) {
+    const retryable = error instanceof ProviderError ? error.retryable : true;
+    const canRetry = retryable && log.attempts < NOTIFICATION_MAX_ATTEMPTS;
+    const message = redact(error instanceof Error ? error.message : String(error)).slice(0, 500);
+    await db.notificationLog.update({
+      where: { id: log.id },
+      data: {
+        status: "FAILED",
+        provider: "whatsapp",
+        lastError: message,
+        nextAttemptAt: canRetry ? new Date(now.getTime() + notificationBackoffMs(log.attempts)) : null,
+      },
+    });
+    await db.clinicWhatsappConfig.update({ where: { clinicId: log.clinicId }, data: { lastError: message } });
+    logger.warn("notification.send_failed", { notificationId: log.id, channel: log.channel, retry: canRetry });
     return "failed";
   }
 }

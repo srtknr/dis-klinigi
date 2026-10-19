@@ -5,6 +5,7 @@ import {
   recoverStaleNotifications,
   type DispatchDeps,
 } from "@/lib/notifications/outbox";
+import { enqueueDueReminders } from "@/lib/notifications/reminders";
 import {
   processPendingCalendarSyncs,
   recoverStaleCalendarJobs,
@@ -34,7 +35,11 @@ export async function processAppointmentSideEffects(
 
 export async function processOutbox(limit = 50) {
   await Promise.all([recoverStaleNotifications(), recoverStaleCalendarJobs()]);
+  const remindersQueued = await enqueueDueReminders().catch((error) => {
+    logger.error("side_effects.reminders_failed", error);
+    return 0;
+  });
   const notifications = await dispatchPendingNotifications({ limit });
   const calendar = await processPendingCalendarSyncs({ limit });
-  return { notifications, calendar };
+  return { notifications, calendar, remindersQueued };
 }

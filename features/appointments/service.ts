@@ -517,7 +517,7 @@ export async function rescheduleAppointment(ctx: AuthContext, raw: unknown): Pro
 
       const updated = await tx.appointment.updateMany({
         where: { id: current.id, status: current.status, updatedAt: current.updatedAt },
-        data: { dentistId: dentist.id, startsAt, endsAt },
+        data: { dentistId: dentist.id, startsAt, endsAt, attendanceResponse: null, attendanceRespondedAt: null },
       });
       if (updated.count !== 1) throw errors.conflict("Randevu başka bir kullanıcı tarafından güncellendi. Sayfayı yenileyin.");
 

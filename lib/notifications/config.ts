@@ -3,6 +3,8 @@ import { normalizeTrPhone } from "@/lib/phone";
 import { ConsoleEmailProvider, ResendEmailProvider, SmtpEmailProvider } from "@/lib/notifications/email/providers";
 import { ConsoleSmsProvider, NetgsmSmsProvider } from "@/lib/notifications/sms/providers";
 import type { EmailProvider, SmsProvider } from "@/lib/notifications/types";
+import { ConsoleWhatsappProvider, MetaCloudWhatsappProvider } from "@/lib/notifications/whatsapp/providers";
+import type { WhatsappProvider } from "@/lib/notifications/whatsapp/types";
 
 const isProduction = () => process.env.NODE_ENV === "production";
 
@@ -83,5 +85,34 @@ export function describeNotificationSetup(): IntegrationStatus {
         ? "Mock mod: SMS gönderilmez. Gerçek gönderim için SMS_PROVIDER=netgsm, SMS_LIVE_SEND=true ve NetGSM bilgilerini tanımlayın."
         : "SMS'ler NetGSM üzerinden gönderilir.",
     },
+  };
+}
+
+/**
+ * Gerçek WhatsApp mesajı yalnızca WHATSAPP_LIVE_SEND="true" iken gönderilir; aksi halde mock kullanılır.
+ * Token ve telefon numarası kimliği kliniğe aittir (ClinicWhatsappConfig).
+ */
+export function getWhatsappProvider(config: { phoneNumberId: string; accessToken: string }): WhatsappProvider {
+  if (process.env.WHATSAPP_LIVE_SEND === "true") {
+    return new MetaCloudWhatsappProvider({ ...config, apiVersion: process.env.WHATSAPP_API_VERSION || undefined });
+  }
+  return new ConsoleWhatsappProvider();
+}
+
+/** Production dışında tüm WhatsApp mesajları test numarasına yönlendirilir. */
+export function resolveWhatsappRecipient(original: string): string {
+  if (!isProduction()) {
+    const test = normalizeTrPhone(process.env.WHATSAPP_TEST_RECIPIENT);
+    if (test) return test;
+  }
+  return original;
+}
+
+export function describeWhatsappSetup() {
+  const live = process.env.WHATSAPP_LIVE_SEND === "true";
+  return {
+    live,
+    webhookReady: Boolean(process.env.WHATSAPP_APP_SECRET && process.env.WHATSAPP_VERIFY_TOKEN),
+    testRecipient: !isProduction() ? normalizeTrPhone(process.env.WHATSAPP_TEST_RECIPIENT) : null,
   };
 }

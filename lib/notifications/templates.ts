@@ -26,7 +26,7 @@ export type AdminRequestData = {
 const contactLine = (phone?: string | null) =>
   phone ? `Değişiklik için kliniğimizle iletişime geçebilirsiniz (${phone}).` : "Değişiklik için kliniğimizle iletişime geçebilirsiniz.";
 
-export function renderSms(template: Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST">, d: AppointmentMessageData): string {
+export function renderSms(template: Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST" | "PATIENT_REMINDER_24H">, d: AppointmentMessageData): string {
   switch (template) {
     case "PATIENT_CONFIRMED":
       return `Merhaba ${d.firstName}, ${d.clinicName} randevunuz onaylanmıştır. Tarih: ${d.date}, Saat: ${d.time}, Doktor: ${d.dentist}. Değişiklik için kliniğimizle iletişime geçebilirsiniz.`;
@@ -40,7 +40,7 @@ export function renderSms(template: Exclude<NotificationTemplate, "ADMIN_NEW_REQ
 }
 
 export function renderPatientEmail(
-  template: Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST">,
+  template: Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST" | "PATIENT_REMINDER_24H">,
   d: AppointmentMessageData,
 ): { subject: string; text: string } {
   const footer = `\n\n${d.clinicName}\n${contactLine(d.clinicPhone)}\n\nBu e-posta randevu talebiniz nedeniyle gönderilmiştir.`;
@@ -81,4 +81,5 @@ export const TEMPLATE_LABELS: Record<NotificationTemplate, string> = {
   PATIENT_REJECTED: "Talep reddi",
   PATIENT_CANCELLED: "Randevu iptali",
   PATIENT_RESCHEDULED: "Yeniden planlama",
+  PATIENT_REMINDER_24H: "24 saat hatırlatma (WhatsApp)",
 };

@@ -63,6 +63,13 @@ enum TreatmentRecordStatus {
 enum NotificationChannel {
   EMAIL
   SMS
+  WHATSAPP
+}
+
+/// Hastanın 24 saat öncesi hatırlatmaya verdiği yanıt
+enum AttendanceResponse {
+  YES
+  NO
 }
 
 enum NotificationStatus {
@@ -79,6 +86,7 @@ enum NotificationTemplate {
   PATIENT_REJECTED
   PATIENT_CANCELLED
   PATIENT_RESCHEDULED
+  PATIENT_REMINDER_24H
 }
 
 enum CalendarConnectionStatus {
@@ -131,6 +139,8 @@ model Clinic {
   auditLogs           AuditLog[]
   blockedTimes        BlockedTime[]
   patientNotes        PatientNote[]
+  whatsappConfig      ClinicWhatsappConfig?
+  staffNotifications  StaffNotification[]
 }
 
 model User {
@@ -158,6 +168,7 @@ model User {
   treatmentsVoided   TreatmentRecord[]          @relation("TreatmentVoidedBy")
   treatmentRevisions TreatmentRecordRevision[]
   auditLogs          AuditLog[]
+  staffNotifications StaffNotification[]
 }
 
 model Session {
@@ -199,22 +210,22 @@ model Membership {
 // ───────────────────────── Hekimler & Çalışma Programı ─────────────────────────
 
 model DentistProfile {
-  id                    String   @id @default(cuid())
-  clinicId              String
-  userId                String?  @unique
-  slug                  String
-  title                 String   @default("Dt.")
-  firstName             String
-  lastName              String
-  specialty             String
-  bio                   String?
-  photoUrl              String?
-  slotMinutes           Int      @default(30)
-  isActive              Boolean  @default(true)
-  acceptsOnlineBooking  Boolean  @default(true)
-  sortOrder             Int      @default(0)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  clinicId             String
+  userId               String?  @unique
+  slug                 String
+  title                String   @default("Dt.")
+  firstName            String
+  lastName             String
+  specialty            String
+  bio                  String?
+  photoUrl             String?
+  slotMinutes          Int      @default(30)
+  isActive             Boolean  @default(true)
+  acceptsOnlineBooking Boolean  @default(true)
+  sortOrder            Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   clinic              Clinic                     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   user                User?                      @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -328,41 +339,45 @@ model PatientNote {
 /// Aynı hekim için PENDING/CONFIRMED durumundaki randevuların zaman aralıkları
 /// veritabanında bir EXCLUDE kısıtıyla da çakışmaya karşı korunur (bkz. migration).
 model Appointment {
-  id                 String            @id @default(cuid())
-  clinicId           String
-  dentistId          String
-  patientId          String?
-  serviceId          String?
-  startsAt           DateTime
-  endsAt             DateTime
-  status             AppointmentStatus @default(PENDING)
-  source             AppointmentSource
+  id                    String              @id @default(cuid())
+  clinicId              String
+  dentistId             String
+  patientId             String?
+  serviceId             String?
+  startsAt              DateTime
+  endsAt                DateTime
+  status                AppointmentStatus   @default(PENDING)
+  source                AppointmentSource
   /// Talep anındaki iletişim bilgileri (hasta eşleştirmesi yapılana kadar referans)
-  requesterFirstName String
-  requesterLastName  String
-  requesterPhone     String
-  requesterEmail     String?
-  reason             String?
-  patientMessage     String?
+  requesterFirstName    String
+  requesterLastName     String
+  requesterPhone        String
+  requesterEmail        String?
+  reason                String?
+  patientMessage        String?
   /// KVKK aydınlatma metninin okunduğu beyanının zamanı ve metin sürümü
-  privacyNoticeAckAt DateTime?
-  privacyNoticeVer   String?
+  privacyNoticeAckAt    DateTime?
+  privacyNoticeVer      String?
   /// Açıklama alanında sağlık bilgisi paylaşıldıysa alınan açık rızanın zamanı
-  explicitConsentAt  DateTime?
-  statusReason       String?
-  createdById        String?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  explicitConsentAt     DateTime?
+  statusReason          String?
+  /// WhatsApp hatırlatmasına hastanın verdiği yanıt (randevu saati değişirse sıfırlanır)
+  attendanceResponse    AttendanceResponse?
+  attendanceRespondedAt DateTime?
+  createdById           String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
-  clinic         Clinic                     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  dentist        DentistProfile             @relation(fields: [dentistId], references: [id], onDelete: Restrict)
-  patient        Patient?                   @relation(fields: [patientId], references: [id], onDelete: SetNull)
-  service        Service?                   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  statusHistory  AppointmentStatusHistory[]
-  notes          AppointmentNote[]
-  treatments     TreatmentRecord[]
-  calendarEvents CalendarEventMapping[]
-  notifications  NotificationLog[]
+  clinic             Clinic                     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  dentist            DentistProfile             @relation(fields: [dentistId], references: [id], onDelete: Restrict)
+  patient            Patient?                   @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  service            Service?                   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  statusHistory      AppointmentStatusHistory[]
+  notes              AppointmentNote[]
+  treatments         TreatmentRecord[]
+  calendarEvents     CalendarEventMapping[]
+  notifications      NotificationLog[]
+  staffNotifications StaffNotification[]
 
   @@index([clinicId, startsAt])
   @@index([clinicId, status, startsAt])
@@ -460,21 +475,21 @@ model TreatmentRecordRevision {
 /// dentistId boş ise klinik geneli takvim bağlantısıdır.
 /// Token'lar AES-256-GCM ile şifrelenmiş halde saklanır.
 model GoogleCalendarConnection {
-  id                 String                   @id @default(cuid())
-  clinicId           String
-  dentistId          String?
-  googleEmail        String?
-  calendarId         String                   @default("primary")
-  accessTokenEnc     String
-  refreshTokenEnc    String?
-  tokenExpiresAt     DateTime?
-  scope              String
-  status             CalendarConnectionStatus @default(ACTIVE)
-  lastError          String?
-  lastSyncedAt       DateTime?
-  connectedById      String?
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
+  id              String                   @id @default(cuid())
+  clinicId        String
+  dentistId       String?
+  googleEmail     String?
+  calendarId      String                   @default("primary")
+  accessTokenEnc  String
+  refreshTokenEnc String?
+  tokenExpiresAt  DateTime?
+  scope           String
+  status          CalendarConnectionStatus @default(ACTIVE)
+  lastError       String?
+  lastSyncedAt    DateTime?
+  connectedById   String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
 
   clinic   Clinic                 @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   dentist  DentistProfile?        @relation(fields: [dentistId], references: [id], onDelete: Cascade)
@@ -565,4 +580,45 @@ model RateLimitBucket {
 
   @@id([key, windowStart])
   @@index([windowStart])
+}
+
+/// Klinik başına WhatsApp Business (Meta Cloud API) bağlantısı. Mesaj ücreti kliniğin kendi Meta hesabından kesilir.
+model ClinicWhatsappConfig {
+  id               String   @id @default(cuid())
+  clinicId         String   @unique
+  /// Meta "Phone number ID" — webhook'ta gelen mesajı kliniğe eşler
+  phoneNumberId    String   @unique
+  wabaId           String?
+  /// AES-256-GCM ile şifreli kalıcı erişim token'ı
+  accessTokenEnc   String
+  /// Meta'da onaylanmış hatırlatma şablonunun adı ve dili
+  templateName     String
+  templateLanguage String   @default("tr")
+  isEnabled        Boolean  @default(false)
+  lastError        String?
+  updatedById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+}
+
+/// Panel içi bildirim (ör. hasta randevuya geleceğini/gelmeyeceğini bildirdi). Kullanıcı başınadır.
+model StaffNotification {
+  id            String    @id @default(cuid())
+  clinicId      String
+  userId        String
+  appointmentId String?
+  kind          String
+  title         String
+  body          String
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  clinic      Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([appointmentId])
 }

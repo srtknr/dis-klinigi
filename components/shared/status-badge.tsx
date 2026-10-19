@@ -38,3 +38,12 @@ export function AppointmentStatusBadge({ status, className }: { status: Appointm
     </ToneBadge>
   );
 }
+
+/** Hastanın WhatsApp hatırlatmasına verdiği yanıt */
+export function AttendanceBadge({ response, className }: { response: "YES" | "NO"; className?: string }) {
+  return (
+    <ToneBadge tone={response === "YES" ? "success" : "danger"} className={className}>
+      {response === "YES" ? "Geleceğini bildirdi" : "Gelemeyeceğini bildirdi"}
+    </ToneBadge>
+  );
+}

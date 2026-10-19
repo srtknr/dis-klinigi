@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AdminShell } from "@/components/admin/admin-shell";
+import { listMyNotifications } from "@/features/notifications/service";
 import { requirePageAuth } from "@/lib/auth/current";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
@@ -13,11 +14,12 @@ export const metadata: Metadata = {
 
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const ctx = await requirePageAuth();
-  const [pendingCount, clinic] = await Promise.all([
+  const [pendingCount, clinic, notifications] = await Promise.all([
     can(ctx, "APPOINTMENT_VIEW")
       ? db.appointment.count({ where: { clinicId: ctx.clinicId, status: "PENDING", startsAt: { gte: new Date() } } })
       : 0,
     db.clinic.findUnique({ where: { id: ctx.clinicId }, select: { isDemo: true } }),
+    listMyNotifications(ctx),
   ]);
 
   return (
@@ -28,6 +30,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       permissions={ctx.permissions}
       pendingCount={pendingCount}
       isDemo={clinic?.isDemo ?? false}
+      notifications={notifications}
     >
       {children}
     </AdminShell>

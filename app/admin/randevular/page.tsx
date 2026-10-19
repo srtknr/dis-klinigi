@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Pagination } from "@/components/shared/pagination";
-import { AppointmentStatusBadge } from "@/components/shared/status-badge";
+import { AppointmentStatusBadge, AttendanceBadge } from "@/components/shared/status-badge";
 import { listAppointments } from "@/features/appointments/queries";
 import { appointmentPersonName, SOURCE_LABELS } from "@/features/appointments/format";
 import { ALL_STATUSES, APPOINTMENT_STATUS_LABELS } from "@/features/appointments/status";
@@ -138,6 +138,7 @@ export default async function AppointmentsPage({ searchParams }: PageProps<"/adm
                   <TableCell className="hidden text-muted-foreground lg:table-cell">{SOURCE_LABELS[a.source] ?? a.source}</TableCell>
                   <TableCell>
                     <AppointmentStatusBadge status={a.status} />
+                    {a.attendanceResponse ? <AttendanceBadge response={a.attendanceResponse} className="ml-1" /> : null}
                   </TableCell>
                 </TableRow>
               ))}

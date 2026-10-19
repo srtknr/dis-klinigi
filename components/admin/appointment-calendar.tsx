@@ -16,7 +16,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import { AppointmentStatusBadge } from "@/components/shared/status-badge";
+import { AppointmentStatusBadge, AttendanceBadge } from "@/components/shared/status-badge";
 import { formatPhone } from "@/lib/phone";
 import { dateKeyInTz, formatLongDate, formatTime } from "@/lib/time";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -45,6 +45,7 @@ type SelectedEvent = {
   dentistName: string;
   phone: string;
   reason: string | null;
+  attendanceResponse: "YES" | "NO" | null;
 };
 
 export function AppointmentCalendar({
@@ -103,6 +104,7 @@ export function AppointmentCalendar({
                 dentistName: e.dentistName,
                 phone: e.phone,
                 reason: e.reason,
+                attendanceResponse: e.attendanceResponse,
               },
             };
           }),
@@ -203,6 +205,7 @@ export function AppointmentCalendar({
               dentistName: p.dentistName,
               phone: p.phone,
               reason: p.reason,
+              attendanceResponse: p.attendanceResponse,
             });
           }}
           eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
@@ -218,7 +221,10 @@ export function AppointmentCalendar({
               <div className="flex items-start justify-between gap-2">
                 <div className="space-y-1.5">
                   <h3 className="text-base leading-tight font-semibold">{selected.personName}</h3>
-                  <AppointmentStatusBadge status={selected.status} />
+                  <div className="flex flex-wrap gap-1.5">
+                    <AppointmentStatusBadge status={selected.status} />
+                    {selected.attendanceResponse ? <AttendanceBadge response={selected.attendanceResponse} /> : null}
+                  </div>
                 </div>
                 <Button type="button" variant="ghost" size="icon-sm" onClick={() => setSelected(null)} aria-label="Kapat">
                   <X aria-hidden />

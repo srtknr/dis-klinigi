@@ -7,7 +7,7 @@ import { AppointmentNoteForm } from "@/components/admin/appointment-note-form";
 import { AppointmentRescheduleForm } from "@/components/admin/appointment-reschedule-form";
 import { AppointmentStatusActions } from "@/components/admin/appointment-status-actions";
 import { PageHeader } from "@/components/shared/page-header";
-import { AppointmentStatusBadge, ToneBadge } from "@/components/shared/status-badge";
+import { AppointmentStatusBadge, AttendanceBadge, ToneBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { getAppointmentDetail } from "@/features/appointments/queries";
 import { appointmentPersonName, SOURCE_LABELS } from "@/features/appointments/format";
@@ -34,9 +34,10 @@ const NOTIF_TEMPLATE: Record<string, string> = {
   PATIENT_REJECTED: "Red bildirimi",
   PATIENT_CANCELLED: "İptal bildirimi",
   PATIENT_RESCHEDULED: "Yeniden planlama",
+  PATIENT_REMINDER_24H: "24 saat hatırlatma",
   ADMIN_NEW_REQUEST: "Yeni talep (klinik)",
 };
-const CHANNEL: Record<string, string> = { SMS: "SMS", EMAIL: "E-posta" };
+const CHANNEL: Record<string, string> = { SMS: "SMS", EMAIL: "E-posta", WHATSAPP: "WhatsApp" };
 const SYNC: Record<string, { label: string; tone: "warning" | "success" | "danger" | "muted" | "info" }> = {
   PENDING: { label: "Bekliyor", tone: "warning" },
   PROCESSING: { label: "İşleniyor", tone: "info" },
@@ -66,6 +67,7 @@ export default async function AppointmentDetailPage({ params, searchParams }: Pa
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
             <AppointmentStatusBadge status={appointment.status} />
+            {appointment.attendanceResponse ? <AttendanceBadge response={appointment.attendanceResponse} /> : null}
             <span>
               {formatLongDate(appointment.startsAt)} · {formatTime(appointment.startsAt)}–{formatTime(appointment.endsAt)}
             </span>

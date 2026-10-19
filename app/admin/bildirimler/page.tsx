@@ -25,6 +25,7 @@ const TEMPLATE: Record<string, string> = {
   PATIENT_REJECTED: "Red",
   PATIENT_CANCELLED: "İptal",
   PATIENT_RESCHEDULED: "Yeniden planlama",
+  PATIENT_REMINDER_24H: "24 saat hatırlatma",
   ADMIN_NEW_REQUEST: "Yeni talep",
 };
 
