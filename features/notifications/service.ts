@@ -7,7 +7,8 @@ export type StaffNotificationDto = {
   kind: string;
   title: string;
   body: string;
-  appointmentId: string | null;
+  /** Tıklanınca gidilecek panel yolu */
+  href: string | null;
   read: boolean;
   createdAt: string;
 };
@@ -26,7 +27,7 @@ export async function listMyNotifications(ctx: AuthContext, limit = 15) {
       kind: n.kind,
       title: n.title,
       body: n.body,
-      appointmentId: n.appointmentId,
+      href: n.link ?? (n.appointmentId ? `/admin/randevular/${n.appointmentId}` : null),
       read: n.readAt !== null,
       createdAt: n.createdAt.toISOString(),
     })),

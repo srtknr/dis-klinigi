@@ -24,7 +24,7 @@ export function notificationBackoffMs(attempt: number): number {
   return Math.min(120, 2 ** attempt) * 60_000;
 }
 
-type PatientTemplate = Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST" | "PATIENT_REMINDER_24H">;
+type PatientTemplate = Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST" | "PATIENT_REMINDER_24H" | "PATIENT_FORM_LINK">;
 
 /**
  * Randevu olayına ait bildirimleri outbox'a yazar. Randevu değişikliğiyle aynı transaction
@@ -68,8 +68,8 @@ export async function enqueueAppointmentNotifications(
       });
       rows.push({ channel: "EMAIL", recipient: to, subject: mail.subject, body: mail.text });
     }
-  } else if (input.template === "PATIENT_REMINDER_24H") {
-    // WhatsApp hatırlatmaları enqueueDueReminders() ile planlanır; olay bazlı SMS/e-posta yoktur.
+  } else if (input.template === "PATIENT_REMINDER_24H" || input.template === "PATIENT_FORM_LINK") {
+    // Hatırlatmalar enqueueDueReminders(), form bağlantıları features/forms/service.ts ile planlanır.
     return 0;
   } else {
     const template = input.template as PatientTemplate;

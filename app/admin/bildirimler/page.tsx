@@ -26,6 +26,7 @@ const TEMPLATE: Record<string, string> = {
   PATIENT_CANCELLED: "İptal",
   PATIENT_RESCHEDULED: "Yeniden planlama",
   PATIENT_REMINDER_24H: "24 saat hatırlatma",
+  PATIENT_FORM_LINK: "Sağlık formu bağlantısı",
   ADMIN_NEW_REQUEST: "Yeni talep",
 };
 

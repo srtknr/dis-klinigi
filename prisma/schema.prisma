@@ -66,6 +66,12 @@ enum NotificationChannel {
   WHATSAPP
 }
 
+enum PatientFormStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
 /// Hastanın 24 saat öncesi hatırlatmaya verdiği yanıt
 enum AttendanceResponse {
   YES
@@ -87,6 +93,7 @@ enum NotificationTemplate {
   PATIENT_CANCELLED
   PATIENT_RESCHEDULED
   PATIENT_REMINDER_24H
+  PATIENT_FORM_LINK
 }
 
 enum CalendarConnectionStatus {
@@ -141,6 +148,7 @@ model Clinic {
   patientNotes        PatientNote[]
   whatsappConfig      ClinicWhatsappConfig?
   staffNotifications  StaffNotification[]
+  patientForms        PatientFormRequest[]
 }
 
 model User {
@@ -160,15 +168,16 @@ model User {
   sessions       Session[]
   dentistProfile DentistProfile?
 
-  statusChanges      AppointmentStatusHistory[]
-  appointmentNotes   AppointmentNote[]
-  patientNotes       PatientNote[]
-  treatmentsCreated  TreatmentRecord[]          @relation("TreatmentCreatedBy")
-  treatmentsUpdated  TreatmentRecord[]          @relation("TreatmentUpdatedBy")
-  treatmentsVoided   TreatmentRecord[]          @relation("TreatmentVoidedBy")
-  treatmentRevisions TreatmentRecordRevision[]
-  auditLogs          AuditLog[]
-  staffNotifications StaffNotification[]
+  statusChanges       AppointmentStatusHistory[]
+  appointmentNotes    AppointmentNote[]
+  patientNotes        PatientNote[]
+  treatmentsCreated   TreatmentRecord[]          @relation("TreatmentCreatedBy")
+  treatmentsUpdated   TreatmentRecord[]          @relation("TreatmentUpdatedBy")
+  treatmentsVoided    TreatmentRecord[]          @relation("TreatmentVoidedBy")
+  treatmentRevisions  TreatmentRecordRevision[]
+  auditLogs           AuditLog[]
+  staffNotifications  StaffNotification[]
+  patientFormsCreated PatientFormRequest[]
 }
 
 model Session {
@@ -308,10 +317,11 @@ model Patient {
   updatedAt   DateTime  @updatedAt
   createdById String?
 
-  clinic           Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  clinic           Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   appointments     Appointment[]
   treatmentRecords TreatmentRecord[]
   notes            PatientNote[]
+  formRequests     PatientFormRequest[]
 
   @@index([clinicId, phone])
   @@index([clinicId, searchName])
@@ -610,6 +620,8 @@ model StaffNotification {
   userId        String
   appointmentId String?
   kind          String
+  /// Tıklanınca gidilecek panel yolu (ör. /admin/hastalar/…); yoksa appointmentId kullanılır
+  link          String?
   title         String
   body          String
   readAt        DateTime?
@@ -621,4 +633,31 @@ model StaffNotification {
 
   @@index([userId, readAt, createdAt])
   @@index([appointmentId])
+}
+
+/// Hastaya link ile gönderilen sağlık formu (anamnez). Link'in ham token'ı saklanmaz, yalnızca SHA-256 özeti tutulur.
+/// answers sağlık verisi içerir: yalnızca TREATMENT_VIEW izni olanlar okuyabilir.
+model PatientFormRequest {
+  id            String            @id @default(cuid())
+  clinicId      String
+  patientId     String
+  formKey       String
+  tokenHash     String            @unique
+  status        PatientFormStatus @default(PENDING)
+  expiresAt     DateTime
+  createdById   String?
+  createdAt     DateTime          @default(now())
+  completedAt   DateTime?
+  /// Doğrulanmış cevaplar: { alanId: değer }
+  answers       Json?
+  signatureName String?
+  consentAt     DateTime?
+  ipHash        String?
+
+  clinic    Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([patientId, createdAt])
+  @@index([clinicId, status])
 }

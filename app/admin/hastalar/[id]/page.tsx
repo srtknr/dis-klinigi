@@ -3,15 +3,17 @@ import Link from "next/link";
 import { CalendarPlus, FilePen, Mail, Phone, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PatientFormsCard } from "@/components/admin/patient-forms-card";
 import { PatientNoteForm } from "@/components/admin/patient-note-form";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { AppointmentStatusBadge, ToneBadge } from "@/components/shared/status-badge";
+import { listPatientForms } from "@/features/forms/service";
 import { getPatientDetail } from "@/features/patients/service";
 import { requirePagePermission } from "@/lib/auth/current";
 import { loadOrNotFound } from "@/lib/http/load-or-not-found";
 import { can } from "@/lib/permissions";
-import { formatPhone } from "@/lib/phone";
+import { formatPhone, isTrMobile, normalizeTrPhone } from "@/lib/phone";
 import { dentistName, fullName } from "@/lib/text";
 import { formatDate, formatDateOnly, formatDateTime, formatTime } from "@/lib/time";
 
@@ -22,6 +24,8 @@ export default async function PatientDetailPage({ params }: PageProps<"/admin/ha
   const { id } = await params;
   const { patient, upcoming, past, treatments } = await loadOrNotFound(() => getPatientDetail(ctx, id));
   const name = fullName(patient.firstName, patient.lastName);
+  const forms = can(ctx, "TREATMENT_VIEW") ? await listPatientForms(ctx, patient.id) : null;
+  const mobile = normalizeTrPhone(patient.phone);
 
   return (
     <>
@@ -109,6 +113,22 @@ export default async function PatientDetailPage({ params }: PageProps<"/admin/ha
               )}
             </CardContent>
           </Card>
+
+          {forms ? (
+            <PatientFormsCard
+              patientId={patient.id}
+              canManage={can(ctx, "TREATMENT_MANAGE")}
+              canSms={mobile !== null && isTrMobile(mobile)}
+              canEmail={Boolean(patient.email)}
+              items={forms.map((f) => ({
+                id: f.id,
+                displayStatus: f.displayStatus,
+                createdAt: f.createdAt.toISOString(),
+                completedAt: f.completedAt?.toISOString() ?? null,
+                createdByName: f.createdBy?.name ?? null,
+              }))}
+            />
+          ) : null}
 
           <Card>
             <CardHeader>

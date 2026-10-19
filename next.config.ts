@@ -9,7 +9,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  serverExternalPackages: ["pg", "nodemailer", "bcryptjs"],
+  serverExternalPackages: ["pg", "nodemailer", "bcryptjs", "pdfkit"],
+  // PDF için gömülen font dosyaları sunucu paketine dahil edilsin
+  outputFileTracingIncludes: {
+    "/admin/hastalar/[id]/formlar/[requestId]/pdf": ["./node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf", "./node_modules/dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf"],
+  },
   turbopack: {
     rules: {
       "*.css": {

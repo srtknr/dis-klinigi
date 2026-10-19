@@ -83,9 +83,9 @@ export function NotificationBell({ items, unread }: { items: StaffNotificationDt
               );
               return (
                 <li key={n.id}>
-                  {n.appointmentId ? (
+                  {n.href ? (
                     <Link
-                      href={`/admin/randevular/${n.appointmentId}`}
+                      href={n.href}
                       className="block px-4 py-3 hover:bg-muted/60"
                       onClick={() => {
                         setOpen(false);

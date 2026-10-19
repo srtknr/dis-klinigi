@@ -26,7 +26,7 @@ export type AdminRequestData = {
 const contactLine = (phone?: string | null) =>
   phone ? `Değişiklik için kliniğimizle iletişime geçebilirsiniz (${phone}).` : "Değişiklik için kliniğimizle iletişime geçebilirsiniz.";
 
-export function renderSms(template: Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST" | "PATIENT_REMINDER_24H">, d: AppointmentMessageData): string {
+export function renderSms(template: Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST" | "PATIENT_REMINDER_24H" | "PATIENT_FORM_LINK">, d: AppointmentMessageData): string {
   switch (template) {
     case "PATIENT_CONFIRMED":
       return `Merhaba ${d.firstName}, ${d.clinicName} randevunuz onaylanmıştır. Tarih: ${d.date}, Saat: ${d.time}, Doktor: ${d.dentist}. Değişiklik için kliniğimizle iletişime geçebilirsiniz.`;
@@ -40,7 +40,7 @@ export function renderSms(template: Exclude<NotificationTemplate, "ADMIN_NEW_REQ
 }
 
 export function renderPatientEmail(
-  template: Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST" | "PATIENT_REMINDER_24H">,
+  template: Exclude<NotificationTemplate, "ADMIN_NEW_REQUEST" | "PATIENT_REMINDER_24H" | "PATIENT_FORM_LINK">,
   d: AppointmentMessageData,
 ): { subject: string; text: string } {
   const footer = `\n\n${d.clinicName}\n${contactLine(d.clinicPhone)}\n\nBu e-posta randevu talebiniz nedeniyle gönderilmiştir.`;
@@ -82,4 +82,18 @@ export const TEMPLATE_LABELS: Record<NotificationTemplate, string> = {
   PATIENT_CANCELLED: "Randevu iptali",
   PATIENT_RESCHEDULED: "Yeniden planlama",
   PATIENT_REMINDER_24H: "24 saat hatırlatma (WhatsApp)",
+  PATIENT_FORM_LINK: "Sağlık formu bağlantısı",
 };
+
+export type FormLinkData = { firstName: string; clinicName: string; link: string; validDays: number };
+
+export function renderFormLinkSms(d: FormLinkData): string {
+  return `Merhaba ${d.firstName}, ${d.clinicName} sağlık bilgi formunuzu doldurmanız için bağlantı: ${d.link} (${d.validDays} gün geçerli)`;
+}
+
+export function renderFormLinkEmail(d: FormLinkData): { subject: string; text: string } {
+  return {
+    subject: `Sağlık bilgi formunuz – ${d.clinicName}`,
+    text: `Merhaba ${d.firstName},\n\n${d.clinicName} tedaviniz öncesinde sağlık geçmişinizi öğrenmek istiyor. Formu aşağıdaki bağlantıdan doldurabilirsiniz. Yaklaşık 5 dakika sürer.\n\n${d.link}\n\nBağlantı kişiye özeldir, ${d.validDays} gün geçerlidir ve yalnızca bir kez kullanılabilir. Lütfen başkalarıyla paylaşmayın.\n\n${d.clinicName}`,
+  };
+}
