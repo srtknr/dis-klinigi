@@ -21,7 +21,7 @@ export interface WhatsappProvider {
 export const REMINDER_TEMPLATE_PARAMS = ["Hasta adı", "Klinik adı", "Tarih", "Saat", "Hekim"] as const;
 
 export const REMINDER_TEMPLATE_EXAMPLE =
-  "Merhaba {{1}}, {{2}} kliniğinde {{3}} saat {{4}} için {{5}} ile randevunuz bulunmaktadır. Randevunuza gelmeyi düşünüyor musunuz?";
+  "Merhaba {{1}}, {{2}} bünyesinde {{3}} saat {{4}} için {{5}} ile randevunuz bulunmaktadır. Randevunuza gelmeyi düşünüyor musunuz?";
 export const REMINDER_BUTTONS = ["Evet, geleceğim", "Hayır, gelemeyeceğim"] as const;
 
 const PAYLOAD_PREFIX = "att";
